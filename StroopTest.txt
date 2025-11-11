@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stroop Test</title>
+<style>
+  body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+  h1 { margin-bottom: 10px; }
+  #controls { display: grid; gap: 12px; justify-items: center; margin: 10px 0 20px; }
+  #controls > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
+  input[type="text"] { font-size: 18px; padding: 8px 10px; }
+  button { font-size: 18px; padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; transition: transform 0.1s ease, opacity 0.2s ease; }
+  button:active { transform: scale(0.9); opacity: 0.7; }
+  .neutral { background:#444; color:#fff; }
+  #status { font-size: 16px; color:#333; min-height: 24px; }
+  #timer { font-size: 20px; margin-top: 10px; color: darkred; display:none; }
+  #word { font-size: 52px; margin: 20px 0; }
+  #buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  .color-btn { min-width: 120px; }
+  #result { font-size: 22px; margin-top: 10px; }
+  #score, #stats { margin-top: 14px; font-size: 18px; white-space: pre-line; }
+  #game, #result, #score, #stats { display: none; }
+  #library { margin-top: 30px; text-align: left; }
+  #resultsList div { margin: 4px 0; font-size: 16px; }
+  .c-red    { background:red;    color:white; }
+  .c-green  { background:green;  color:white; }
+  .c-blue   { background:blue;   color:white; }
+  .c-yellow { background:gold;   color:black; }
+  .c-purple { background:purple; color:white; }
+  .c-black  { background:black;  color:white; }
+</style>
+</head>
+<body>
+
+<h1>Stroop Test</h1>
+
+<div id="controls">
+  <div id="profileRow">
+    <input type="text" id="username" placeholder="Введите имя" />
+    <button class="neutral" onclick="saveProfile()">Сохранить профиль</button>
+    <span id="profileInfo"></span>
+  </div>
+
+  <div id="colorSettings">
+    <span><strong>Выберите количество цветов:</strong></span>
+    <button class="neutral" onclick="setColors(2)">2</button>
+    <button class="neutral" onclick="setColors(3)">3</button>
+    <button class="neutral" onclick="setColors(4)">4</button>
+    <button class="neutral" onclick="setColors(5)">5</button>
+    <button class="neutral" onclick="setColors(6)">6</button>
+  </div>
+
+  <div id="timeSettings">
+    <button class="neutral" onclick="startTest(30)">30 секунд</button>
+    <button class="neutral" onclick="startTest(60)">60 секунд</button>
+    <button class="neutral" onclick="endTest()">Завершить тест</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="timer"></div>
+</div>
+
+<div id="game">
+  <div id="word"></div>
+  <div id="buttons"></div>
+</div>
+
+<div id="result"></div>
+<div id="score"></div>
+<div id="stats"></div>
+
+<div id="library">
+  <h2>Библиотека результатов</h2>
+  <div id="resultsList"></div>
+</div>
+
+<script>
+let correct=0, wrong=0, total=0;
+let startTime=0;
+let reactionTimes=[];
+let testTimer=null, countdownTimer=null;
+let testDuration=30;
+let currentUser="";
+let activeColors=[];
+
+const allColors=[
+  {key:"red",name:"Красный",class:"c-red"},
+  {key:"green",name:"Зелёный",class:"c-green"},
+  {key:"blue",name:"Синий",class:"c-blue"},
+  {key:"yellow",name:"Жёлтый",class:"c-yellow"},
+  {key:"purple",name:"Фиолетовый",class:"c-purple"},
+  {key:"black",name:"Чёрный",class:"c-black"}
+];
+
+function saveProfile(){
+  const name=document.getElementById("username").value.trim();
+  if(!name){alert("Введите имя профиля");return;}
+  currentUser=name;
+  localStorage.setItem("stroopUser",currentUser);
+  document.getElementById("profileInfo").textContent=`Профиль: ${currentUser}`;
+  document.getElementById("status").textContent="Профиль сохранён. Выберите количество цветов.";
+}
+
+function setColors(n){
+  activeColors=allColors.slice(0,n);
+  renderAnswerButtons();
+  document.getElementById("status").textContent=`Выбрано цветов: ${n}. Теперь запустите тест.`;
+}
+
+function renderAnswerButtons(){
+  const container=document.getElementById("buttons");
+  container.innerHTML="";
+  activeColors.forEach(c=>{
+    const b=document.createElement("button");
+    b.className=`color-btn ${c.class}`;
+    b.textContent=c.name;
+    b.onclick=function(){check(c.key);};
+    container.appendChild(b);
+  });
+}
+
+function startTest(duration){
+  if(activeColors.length<2){alert("Сначала выберите количество цветов.");return;}
+  testDuration=duration;
+  correct=0;wrong=0;total=0;reactionTimes=[];
+  document.getElementById("result").textContent="";
+  document.getElementById("score").textContent="";
+  document.getElementById("stats").textContent="";
+  document.getElementById("status").textContent=`Тест запущен на ${duration} секунд.`;
+  document.getElementById("game").style.display="block";
+  document.getElementById("result").style.display="block";
+  document.getElementById("score").style.display="block";
+  document.getElementById("stats").style.display="block";
+  document.getElementById("timer").style.display="block";
+
+  nextWord();
+  clearTimeout(testTimer);clearInterval(countdownTimer);
+  let remaining=duration;
+  document.getElementById("timer").textContent=`Осталось: ${remaining} сек`;
+  countdownTimer=setInterval(()=>{
+    remaining--;
+    document.getElementById("timer").textContent=`Осталось: ${remaining} сек`;
+    if(remaining<=0){clearInterval(countdownTimer);}
+  },1000);
+  testTimer=setTimeout(endTest,duration*1000);
+}
+
+function nextWord(){
+  const colorObj=activeColors[Math.floor(Math.random()*activeColors.length)];
+  const textObj=activeColors[Math.floor(Math.random()*activeColors.length)];
+  const wordEl=document.getElementById("word");
+  wordEl.textContent=textObj.name;
+  wordEl.style.color=colorObj.key;
+  wordEl.dataset.correct=textObj.key;
+  startTime=Date.now();
+}
+
+function check(choice){
+  const wordEl=document.getElementById("word");
+  const correctWord=wordEl.dataset.correct;
+  const rt=Date.now()-startTime;
+  reactionTimes.push(rt);
+  total++;
+  if(choice===correctWord){correct++;document.getElementById("result").textContent="Верно!";}
+  else{wrong++;document.getElementById("result").textContent="Ошибка!";}
+  document.getElementById("score").textContent=`Правильных: ${correct} | Ошибок: ${wrong}`;
+  nextWord();
+}
+
+function endTest(){
+  clearTimeout(testTimer);clearInterval(countdownTimer);
+  let avgTime=0,bestTime=0;
+  if(reactionTimes.length){
+    avgTime=Math.round(reactionTimes.reduce((a,b)=>a+b,0)/reactionTimes.length);
+    bestTime=Math.min(...reactionTimes);
+  }
+  const statsText=`Всего сигналов: ${total}\nПравильных: ${correct}\nОшибок: ${wrong}\nСреднее время ответа: ${avgTime} мс\nЛучшее время ответа: ${bestTime} мс`;
+  document.getElementById("stats").textContent=statsText;
+  document.getElementById("status").textContent="Тест завершён. Результат сохранён.";
+
+  if(currentUser){
+    const raw = localStorage.getItem("stroopResults") || "[]";
+    let results;
+    try { results = JSON.parse(raw); } catch(e){ results = []; }
+    results.push({
+      user: currentUser,
+      correct,
+      wrong,
+      bestTime,
+      date: new Date().toLocaleString()
+    });
+    localStorage.setItem("stroopResults", JSON.stringify(results));
+    showLibrary(results);
+  }
+}
+
+function showLibrary(results){
+  const listEl=document.getElementById("resultsList");
+  listEl.innerHTML="";
+  results.forEach(r=>{
+    const div=document.createElement("div");
+    div.textContent=`${r.date} — ${r.user}: правильных ${r.correct}, ошибок ${r.wrong}, лучшая реакция ${r.bestTime} мс`;
+    listEl.appendChild(div);
+  });
+}
+
+// При загрузке страницы показать библиотеку
+(function initLibrary(){
+  const raw = localStorage.getItem("stroopResults") || "[]";
+  let results;
+  try { results = JSON.parse(raw); } catch(e){ results = []; }
+  showLibrary(results);
+})();
+</script>
+</body>
+</html>
